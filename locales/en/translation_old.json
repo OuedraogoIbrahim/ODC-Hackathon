@@ -1,3 +1,8 @@
 {
-  "tab_layout_logout_loading": "Removing association..."
+  "tab_layout_logout_loading": "Removing association...",
+  "accueil_screen_speak_transport": "Transport service",
+  "accueil_screen_speak_artisans": "Craftsman service",
+  "tab_layout_favorites_label": "Favorites",
+  "favoris_screen_title": "Favorites List",
+  "reservations_screen_show_ticket": "Show ticket"
 }

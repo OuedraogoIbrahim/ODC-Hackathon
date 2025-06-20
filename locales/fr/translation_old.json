@@ -1,3 +1,8 @@
 {
-  "tab_layout_logout_loading": "Suppression de la liaison en cours..."
+  "tab_layout_logout_loading": "Suppression de la liaison en cours...",
+  "accueil_screen_speak_transport": "Service transport",
+  "accueil_screen_speak_artisans": "Service artisan",
+  "tab_layout_favorites_label": "Favoris",
+  "favoris_screen_title": "Liste des favoris",
+  "reservations_screen_show_ticket": "Voir ticket"
 }

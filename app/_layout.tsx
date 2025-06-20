@@ -24,11 +24,10 @@ export default function RootLayout() {
               title: t("layout_artisans_title"),
             }}
           />
-          {/* <Stack.Screen
-            name="test"
-            options={{ title: t("layout_test_title") }}
-          /> */}
-          {/* <Stack.Screen name="Artisan" options={{ title: t("layout_artisan_title") }} /> */}
+          <Stack.Screen
+            name="Artisan"
+            options={{ title: t("layout_artisan_title") }}
+          />
           <Stack.Screen
             name="transport"
             options={{ title: t("layout_transport_title") }}

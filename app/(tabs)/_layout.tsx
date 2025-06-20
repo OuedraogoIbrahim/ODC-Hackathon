@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { CameraView, useCameraPermissions } from "expo-camera"; // Ajout des imports pour la caméra
 import { Tabs, usePathname, useRouter } from "expo-router";
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,8 +15,6 @@ import {
 import * as Animatable from "react-native-animatable";
 import { Appbar, Text } from "react-native-paper";
 import { AuthContext } from "../context/AuthContext";
-import i18n from "../utils/i18n"; // Assurez-vous que i18n est correctement exporté depuis utils/i18n
-
 const Colors = {
   black: "#242424",
   white: "#eee",
@@ -34,11 +32,11 @@ const TabArr = (t) => [
     label: t("tab_layout_my_reservations_label"),
     icon: "calendar-outline",
   },
-  {
-    route: "favoris",
-    label: t("tab_layout_favorites_label"),
-    icon: "heart-circle-outline",
-  },
+  // {
+  //   route: "favoris",
+  //   label: t("tab_layout_favorites_label"),
+  //   icon: "heart-circle-outline",
+  // },
 ];
 
 const animateFocused = {
@@ -80,6 +78,8 @@ const TabButton = ({ item, onPress }) => {
       textRef.current?.transitionTo({ scale: 0, opacity: 0 }, 800);
     }
   }, [focused]);
+
+  const handleScanPress = () => {};
 
   return (
     <TouchableOpacity
@@ -132,13 +132,66 @@ export default function TabLayout() {
   const navigation = useRouter();
   const pathname = usePathname();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-
   const { telephne, setTelephone, setIsConnected } = useContext(AuthContext);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [inputVisible, setInputVisible] = useState(false);
   const [inputValue, setInputValue] = useState("");
   const [loading, setLoading] = useState(false);
   const [isLanguageMenuVisible, setIsLanguageMenuVisible] = useState(false);
+  const [showCamera, setShowCamera] = useState(false); // État pour afficher la caméra
+  const [permission, requestPermission] = useCameraPermissions(); // Permissions caméra
+  const [scanned, setScanned] = useState(false); // État pour gérer le scan
+
+  // Gestion des permissions caméra
+  if (!permission) {
+    return <View />;
+  }
+
+  if (!permission.granted && showCamera) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.message}>
+          {t("tab_layout_camera_permission_message") ||
+            "Nous avons besoin de votre permission pour utiliser la caméra"}
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={requestPermission}>
+          <Text style={styles.text}>
+            {t("tab_layout_grant_permission") || "Accorder la permission"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => setShowCamera(false)}
+        >
+          <Text style={styles.text}>{t("tab_layout_close") || "Fermer"}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const handleScanPress = () => {
+    setIsMenuVisible(false); // Ferme le menu
+    setShowCamera(true); // Ouvre la caméra
+  };
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    setScanned(true);
+    Alert.alert(
+      t("tab_layout_scan_success_title") || "Succès",
+      `${
+        t("tab_layout_scan_success_message") || "Ticket payé avec succès !"
+      } Contenu du QR Code : ${data}`,
+      [
+        {
+          text: "OK",
+          onPress: () => {
+            setScanned(false);
+            setShowCamera(false);
+          },
+        },
+      ]
+    );
+  };
 
   const handleMenuToggle = () => {
     if (isMenuVisible) {
@@ -244,167 +297,209 @@ export default function TabLayout() {
         </View>
       )}
 
-      {!loading && (
-        <Tabs
-          screenOptions={{
-            tabBarStyle: styles.tabBar,
-            headerShown: true,
-            headerStyle: {
-              backgroundColor: Colors.white,
-            },
-            headerTitleAlign: "center",
-            headerLeft: () => (
+      {!loading && showCamera && permission.granted ? (
+        <View style={styles.container}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{
+              barcodeTypes: ["qr"],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          >
+            <View style={styles.overlay}>
+              <Text style={styles.centerText}>
+                {t("tab_layout_scan_qr_code") || "Scannez votre QR Code"}
+              </Text>
               <TouchableOpacity
-                onPress={() => navigation.navigate("/accueil")}
-                style={{ marginLeft: 16 }}
+                style={styles.button}
+                onPress={() => setShowCamera(false)}
               >
-                <Ionicons name="home-outline" size={24} color={Colors.black} />
+                <Text style={styles.text}>
+                  {t("tab_layout_close") || "Fermer"}
+                </Text>
               </TouchableOpacity>
-            ),
-            headerRight: () => (
-              <View style={styles.headerRightContainer}>
-                <Appbar.Action
-                  icon="cog"
-                  onPress={handleMenuToggle}
-                  color={Colors.black}
-                />
-                {isMenuVisible && (
-                  <Animated.View style={[styles.menu, { opacity: fadeAnim }]}>
-                    {telephne ? (
-                      <TouchableOpacity style={styles.menuItem} disabled>
-                        <Ionicons
-                          name="lock-closed-outline"
-                          size={24}
-                          color={Colors.black}
-                        />
-                        <Text style={styles.menuText}>{telephne}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <>
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => setInputVisible(true)}
-                        >
+            </View>
+          </CameraView>
+        </View>
+      ) : (
+        !loading && (
+          <Tabs
+            screenOptions={{
+              tabBarStyle: styles.tabBar,
+              headerShown: true,
+              headerStyle: {
+                backgroundColor: Colors.white,
+              },
+              headerTitleAlign: "center",
+              headerLeft: () => (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate("/accueil")}
+                  style={{ marginLeft: 16 }}
+                >
+                  <Ionicons
+                    name="home-outline"
+                    size={24}
+                    color={Colors.black}
+                  />
+                </TouchableOpacity>
+              ),
+              headerRight: () => (
+                <View style={styles.headerRightContainer}>
+                  <Appbar.Action
+                    icon="cog"
+                    onPress={handleMenuToggle}
+                    color={Colors.black}
+                  />
+                  {isMenuVisible && (
+                    <Animated.View style={[styles.menu, { opacity: fadeAnim }]}>
+                      {telephne ? (
+                        <TouchableOpacity style={styles.menuItem} disabled>
                           <Ionicons
-                            name="lock-open-outline"
+                            name="lock-closed-outline"
                             size={24}
                             color={Colors.black}
                           />
-                          <Text style={styles.menuText}>
-                            {t("tab_layout_link_phone")}
-                          </Text>
+                          <Text style={styles.menuText}>{telephne}</Text>
                         </TouchableOpacity>
-                        {inputVisible && (
-                          <View style={{ padding: 10 }}>
-                            <TextInput
-                              placeholder={t("tab_layout_phone_placeholder")}
-                              value={inputValue}
-                              onChangeText={setInputValue}
-                              keyboardType="phone-pad"
-                              style={{
-                                borderWidth: 1,
-                                borderColor: "#ccc",
-                                borderRadius: 5,
-                                padding: 8,
-                                marginBottom: 5,
-                              }}
+                      ) : (
+                        <>
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => setInputVisible(true)}
+                          >
+                            <Ionicons
+                              name="lock-open-outline"
+                              size={24}
+                              color={Colors.black}
                             />
-                            <TouchableOpacity
-                              onPress={savePhoneNumber}
-                              style={{
-                                backgroundColor: Colors.primary,
-                                padding: 8,
-                                borderRadius: 5,
-                              }}
-                            >
-                              <Text
-                                style={{ color: "#fff", textAlign: "center" }}
+                            <Text style={styles.menuText}>
+                              {t("tab_layout_link_phone")}
+                            </Text>
+                          </TouchableOpacity>
+                          {inputVisible && (
+                            <View style={{ padding: 10 }}>
+                              <TextInput
+                                placeholder={
+                                  t("tab_layout_phone_placeholder") ||
+                                  "Enter phone number"
+                                }
+                                value={inputValue}
+                                onChangeText={setInputValue}
+                                keyboardType="phone-pad"
+                                style={{
+                                  borderWidth: 1,
+                                  borderColor: "#ccc",
+                                  borderRadius: 5,
+                                  padding: 8,
+                                  marginBottom: 5,
+                                }}
+                              />
+                              <TouchableOpacity
+                                onPress={savePhoneNumber}
+                                style={{
+                                  backgroundColor: Colors.primary,
+                                  padding: 8,
+                                  borderRadius: 5,
+                                }}
                               >
-                                {t("tab_layout_save_button")}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
-                      </>
-                    )}
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={handleLogoutPress}
-                    >
-                      <Ionicons
-                        name="log-out-outline"
-                        size={24}
-                        color={Colors.black}
-                      />
-                      <Text style={styles.menuText}>
-                        {t("tab_layout_logout_button")}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() =>
-                        setIsLanguageMenuVisible(!isLanguageMenuVisible)
-                      }
-                    >
-                      <Ionicons
-                        name="language-outline"
-                        size={24}
-                        color={Colors.black}
-                      />
-                      <Text style={styles.menuText}>
-                        {t("tab_layout_change_language")}
-                      </Text>
-                    </TouchableOpacity>
-                    {isLanguageMenuVisible && (
-                      <View style={{ paddingLeft: 20 }}>
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => handleLanguageChange("fr")}
-                        >
-                          <Text style={styles.menuText}>
-                            🇫🇷 {t("tab_layout_language_fr")}
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => handleLanguageChange("en")}
-                        >
-                          <Text style={styles.menuText}>
-                            🇬🇧 {t("tab_layout_language_en")}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </Animated.View>
-                )}
-              </View>
-            ),
-          }}
-        >
-          {TabArr(t).map((item, index) => (
-            <Tabs.Screen
-              key={index}
-              name={item.route}
-              options={{
-                tabBarShowLabel: false,
-                title: "",
-                tabBarButton: (props) => <TabButton {...props} item={item} />,
-              }}
-            />
-          ))}
-        </Tabs>
+                                <Text
+                                  style={{ color: "#fff", textAlign: "center" }}
+                                >
+                                  {t("tab_layout_save_button") || "Save"}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </>
+                      )}
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={handleScanPress}
+                      >
+                        <Ionicons
+                          name="qr-code"
+                          size={24}
+                          color={Colors.black}
+                        />
+                        <Text style={styles.menuText}>
+                          {t("tab_layout_scan") || "Scanner"}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={handleLogoutPress}
+                      >
+                        <Ionicons
+                          name="log-out-outline"
+                          size={24}
+                          color={Colors.black}
+                        />
+                        <Text style={styles.menuText}>
+                          {t("tab_layout_logout_button")}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.menuItem}
+                        onPress={() =>
+                          setIsLanguageMenuVisible(!isLanguageMenuVisible)
+                        }
+                      >
+                        <Ionicons
+                          name="language-outline"
+                          size={24}
+                          color={Colors.black}
+                        />
+                        <Text style={styles.menuText}>
+                          {t("tab_layout_change_language")}
+                        </Text>
+                      </TouchableOpacity>
+                      {isLanguageMenuVisible && (
+                        <View style={{ paddingLeft: 20 }}>
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleLanguageChange("fr")}
+                          >
+                            <Text style={styles.menuText}>
+                              🇫🇷 {t("tab_layout_language_fr")}
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.menuItem}
+                            onPress={() => handleLanguageChange("en")}
+                          >
+                            <Text style={styles.menuText}>
+                              🇬🇧 {t("tab_layout_language_en")}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </Animated.View>
+                  )}
+                </View>
+              ),
+            }}
+          >
+            {TabArr(t).map((item, index) => (
+              <Tabs.Screen
+                key={index}
+                name={item.route}
+                options={{
+                  tabBarShowLabel: false,
+                  title: "",
+                  tabBarButton: (props) => <TabButton {...props} item={item} />,
+                }}
+              />
+            ))}
+          </Tabs>
+        )
       )}
     </>
   );
 }
 
+// Ajout des styles nécessaires pour la caméra
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    height: 70,
-  },
   tabBar: {
     height: 70,
     marginTop: 18,
@@ -468,6 +563,49 @@ const styles = StyleSheet.create({
   },
   menuText: {
     marginLeft: 8,
+    fontSize: 16,
+    color: Colors.black,
+  },
+
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  camera: {
+    flex: 1,
+    width: "100%",
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: "transparent",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 20,
+  },
+  button: {
+    alignSelf: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 5,
+    marginVertical: 5,
+  },
+  text: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "white",
+  },
+  centerText: {
+    fontSize: 18,
+    color: "#fff",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 5,
+  },
+  message: {
+    textAlign: "center",
+    paddingBottom: 10,
     fontSize: 16,
     color: Colors.black,
   },

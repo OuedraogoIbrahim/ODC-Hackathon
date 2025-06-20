@@ -6,11 +6,13 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import {
   deleteReservation,
   initializeDatabase,
@@ -24,6 +26,7 @@ interface ReservationWithVoyage extends Reservation {
   date: string;
   heure: string;
   prix: number;
+  agenceNom: string; // Ajout pour le nom de l'agence
 }
 
 export default function MesReservations({ navigation }: { navigation: any }) {
@@ -31,6 +34,9 @@ export default function MesReservations({ navigation }: { navigation: any }) {
   const [db, setDb] = useState<SQLite.SQLiteDatabase | null>(null);
   const [reservations, setReservations] = useState<ReservationWithVoyage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedReservation, setSelectedReservation] =
+    useState<ReservationWithVoyage | null>(null);
+  const [modalVisible, setModalVisible] = useState<boolean>(false);
 
   useEffect(() => {
     const initialize = async () => {
@@ -38,13 +44,14 @@ export default function MesReservations({ navigation }: { navigation: any }) {
         const database = await initializeDatabase();
         setDb(database);
 
-        // Charger les réservations avec les détails des voyages
+        // Charger les réservations avec les détails des voyages et de l'agence
         const allReservations: ReservationWithVoyage[] =
           await database.getAllAsync(
             `
-          SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix
+          SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix, a.nom AS agenceNom
           FROM reservations r
           JOIN voyages v ON r.voyageId = v.id
+          JOIN agences a ON v.agenceId = a.id
           WHERE r.status = ?
         `,
             ["pending"]
@@ -77,9 +84,10 @@ export default function MesReservations({ navigation }: { navigation: any }) {
       // Rafraîchir les réservations
       const allReservations: ReservationWithVoyage[] = await db.getAllAsync(
         `
-        SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix
+        SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix, a.nom AS agenceNom
         FROM reservations r
         JOIN voyages v ON r.voyageId = v.id
+        JOIN agences a ON v.agenceId = a.id
         WHERE r.status = ?
       `,
         ["pending"]
@@ -124,9 +132,10 @@ export default function MesReservations({ navigation }: { navigation: any }) {
               const allReservations: ReservationWithVoyage[] =
                 await db.getAllAsync(
                   `
-                SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix
+                SELECT r.*, v.depart, v.arrivee, v.date, v.heure, v.prix, a.nom AS agenceNom
                 FROM reservations r
                 JOIN voyages v ON r.voyageId = v.id
+                JOIN agences a ON v.agenceId = a.id
                 WHERE r.status = ?
               `,
                   ["pending"]
@@ -149,6 +158,38 @@ export default function MesReservations({ navigation }: { navigation: any }) {
     );
   };
 
+  // const handleShowTicket = (item: ReservationWithVoyage) => {
+  //   Alert.alert(
+  //     t("reservations_screen_ticket_title"),
+  //     `${t("reservations_screen_ticket_departure")}: ${item.depart}\n` +
+  //       `${t("reservations_screen_ticket_arrival")}: ${item.arrivee}\n` +
+  //       `${t("reservations_screen_date_label")} ${item.date} ${t(
+  //         "reservations_screen_at"
+  //       )} ${item.heure}\n` +
+  //       `${t("reservations_screen_total_price_label")} ${
+  //         item.prix * item.nombrePlaces
+  //       } FCFA\n` +
+  //       `${t("reservations_screen_reserved_seats_label")} ${
+  //         item.nombrePlaces
+  //       }\n` +
+  //       `${t("reservations_screen_payment_label")} ${t(
+  //         "reservations_screen_paid"
+  //       )}\n` +
+  //       `${t("reservations_screen_agency_label")} ${item.agenceNom}`,
+  //     [
+  //       {
+  //         text: t("reservations_screen_ok"),
+  //         style: "default",
+  //       },
+  //     ]
+  //   );
+  // };
+
+  const handleShowQRCode = (item: ReservationWithVoyage) => {
+    setSelectedReservation(item);
+    setModalVisible(true);
+  };
+
   const renderItem = ({ item }: { item: ReservationWithVoyage }) => (
     <View style={styles.card}>
       <MaterialIcons name="directions-bus" size={30} color="#F28C38" />
@@ -169,6 +210,9 @@ export default function MesReservations({ navigation }: { navigation: any }) {
         </Text>
         <Text>
           {t("reservations_screen_reserved_seats_label")} {item.nombrePlaces}
+        </Text>
+        <Text>
+          {t("reservations_screen_agency_label")} {item.agenceNom}
         </Text>
         <View
           style={[
@@ -216,6 +260,32 @@ export default function MesReservations({ navigation }: { navigation: any }) {
             </Text>
           </TouchableOpacity>
         )}
+        {item.paymentStatus === "paid" && (
+          <>
+            {/* <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleShowTicket(item)}
+            >
+              <MaterialIcons
+                name="confirmation-number"
+                size={24}
+                color="#F28C38"
+              />
+              <Text style={styles.actionText}>
+                {t("reservations_screen_show_ticket")}
+              </Text>
+            </TouchableOpacity> */}
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => handleShowQRCode(item)}
+            >
+              <MaterialIcons name="qr-code" size={24} color="#F28C38" />
+              <Text style={styles.actionText}>
+                {t("reservations_screen_show_qr")}
+              </Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );
@@ -231,16 +301,89 @@ export default function MesReservations({ navigation }: { navigation: any }) {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={reservations}
-          keyExtractor={(item) => item.id.toString()}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              {t("reservations_screen_no_reservations")}
-            </Text>
-          }
-          renderItem={renderItem}
-        />
+        <>
+          <FlatList
+            data={reservations}
+            keyExtractor={(item) => item.id.toString()}
+            ListEmptyComponent={
+              <Text style={styles.empty}>
+                {t("reservations_screen_no_reservations")}
+              </Text>
+            }
+            renderItem={renderItem}
+          />
+          <Modal
+            animationType="slide"
+            transparent={true}
+            visible={modalVisible}
+            onRequestClose={() => setModalVisible(false)}
+          >
+            <View style={styles.modalContainer}>
+              <View style={styles.modalContent}>
+                {selectedReservation && (
+                  <>
+                    <Text style={styles.modalTitle}>
+                      {t("reservations_screen_qr_title")}
+                    </Text>
+                    <QRCode
+                      value={JSON.stringify({
+                        id: selectedReservation.id,
+                        depart: selectedReservation.depart,
+                        arrivee: selectedReservation.arrivee,
+                        date: selectedReservation.date,
+                        heure: selectedReservation.heure,
+                        prixTotal:
+                          selectedReservation.prix *
+                          selectedReservation.nombrePlaces,
+                        nombrePlaces: selectedReservation.nombrePlaces,
+                        paymentStatus: selectedReservation.paymentStatus,
+                        agenceNom: selectedReservation.agenceNom,
+                      })}
+                      size={200}
+                      color="black"
+                      backgroundColor="white"
+                    />
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_ticket_departure")}:{" "}
+                      {selectedReservation.depart}
+                    </Text>
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_ticket_arrival")}:{" "}
+                      {selectedReservation.arrivee}
+                    </Text>
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_date_label")}{" "}
+                      {selectedReservation.date} {t("reservations_screen_at")}{" "}
+                      {selectedReservation.heure}
+                    </Text>
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_total_price_label")}{" "}
+                      {selectedReservation.prix *
+                        selectedReservation.nombrePlaces}{" "}
+                      FCFA
+                    </Text>
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_reserved_seats_label")}{" "}
+                      {selectedReservation.nombrePlaces}
+                    </Text>
+                    <Text style={styles.modalDetails}>
+                      {t("reservations_screen_agency_label")}{" "}
+                      {selectedReservation.agenceNom}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.modalButton}
+                      onPress={() => setModalVisible(false)}
+                    >
+                      <Text style={styles.modalButtonText}>
+                        {t("reservations_screen_close")}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </View>
+          </Modal>
+        </>
       )}
     </View>
   );
@@ -260,7 +403,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   card: {
-    flexDirection: "row",
+    flexDirection: "column",
     alignItems: "center",
     padding: 12,
     marginBottom: 10,
@@ -286,7 +429,7 @@ const styles = StyleSheet.create({
   prixTotal: {
     fontWeight: "bold",
     fontSize: 14,
-    color: "#C0392B", // Rouge sombre pour faire ressortir
+    color: "#C0392B",
     marginBottom: 5,
   },
   paymentStatus: {
@@ -295,19 +438,19 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   paymentPaid: {
-    backgroundColor: "#E8F5E9", // Vert clair pour payé
+    backgroundColor: "#E8F5E9",
   },
   paymentUnpaid: {
-    backgroundColor: "#FFE0B2", // Orange clair pour non payé
+    backgroundColor: "#FFE0B2",
   },
   paymentStatusText: {
     fontSize: 14,
   },
   paymentPaidText: {
-    color: "#2E7D32", // Vert foncé pour payé
+    color: "#2E7D32",
   },
   paymentUnpaidText: {
-    color: "#F28C38", // Orange foncé pour non payé
+    color: "#F28C38",
   },
   cardActions: {
     flexDirection: "column",
@@ -337,5 +480,40 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: "#333",
     fontSize: 16,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  modalContent: {
+    backgroundColor: "#FFF",
+    padding: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#F28C38",
+    marginBottom: 20,
+  },
+  modalDetails: {
+    fontSize: 16,
+    color: "#333",
+    marginVertical: 5,
+  },
+  modalButton: {
+    marginTop: 20,
+    backgroundColor: "#F28C38",
+    padding: 10,
+    borderRadius: 5,
+  },
+  modalButtonText: {
+    color: "#FFF",
+    fontSize: 16,
+    fontWeight: "bold",
   },
 });
